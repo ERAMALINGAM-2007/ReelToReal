@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ReelToReal — AI Personal Planner from Short Videos</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  
+  <!-- App Styles -->
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- Top App Navigation -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-icon">✨</div>
+      <div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="brand-title">ReelToReal</span>
+          <span class="brand-badge">Gemini AI</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- View Tabs -->
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-tab="feed-view">
+        <span>📚</span> Knowledge Base
+      </button>
+      <button class="nav-tab" data-tab="planner-view">
+        <span>🪄</span> AI Planner
+      </button>
+      <button class="nav-tab" data-tab="map-view">
+        <span>🗺️</span> Map View
+      </button>
+    </nav>
+
+    <!-- Header Actions -->
+    <div class="header-actions">
+      <button class="btn-primary" id="btn-open-ingest">
+        <span>+</span> Ingest Video
+      </button>
+    </div>
+  </header>
+
+  <!-- Main App Layout -->
+  <main class="main-container">
+
+    <!-- TAB 1: KNOWLEDGE BASE FEED VIEW -->
+    <section id="feed-view" class="tab-view active">
+      <div class="controls-bar">
+        <div class="category-pills">
+          <button class="cat-pill active" data-category="all">All</button>
+          <button class="cat-pill" data-category="food">🍜 Food</button>
+          <button class="cat-pill" data-category="travel">✈️ Travel</button>
+          <button class="cat-pill" data-category="activity">🧗 Activity</button>
+          <button class="cat-pill" data-category="fitness">💪 Fitness</button>
+          <button class="cat-pill" data-category="shopping">🛍️ Shopping</button>
+          <button class="cat-pill" data-category="tip">💡 Tips</button>
+        </div>
+
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="feed-search-input" placeholder="Search places, dishes, tips...">
+        </div>
+      </div>
+
+      <!-- Feed Grid -->
+      <div class="cards-grid" id="feed-cards-grid">
+        <!-- Dynamic Cards rendered here -->
+      </div>
+
+      <!-- Empty State -->
+      <div class="empty-state" id="feed-empty-state" style="display: none;">
+        <div class="empty-icon">📂</div>
+        <h3 style="color: #fff; margin-bottom: 0.5rem;">No saved videos found</h3>
+        <p>Upload a video clip or paste an Instagram Reel / YouTube Short link to begin!</p>
+      </div>
+    </section>
+
+    <!-- TAB 2: AI PLANNER CHAT VIEW -->
+    <section id="planner-view" class="tab-view">
+      <div class="planner-container">
+        <!-- Chat Area -->
+        <div class="chat-card">
+          <div class="chat-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1.2rem;">🪄</span>
+              <div>
+                <h3 style="font-size: 1rem; color: #fff;">Grounded AI Planner</h3>
+                <p style="font-size: 0.75rem; color: var(--text-secondary);">Synthesizes plans directly from your saved clips</p>
+              </div>
+            </div>
+            <button class="btn-card-action" id="btn-clear-chat">Clear</button>
+          </div>
+
+          <!-- Chat Messages -->
+          <div class="chat-messages" id="chat-messages-container">
+            <div class="chat-msg ai">
+              <div class="msg-avatar ai">✨</div>
+              <div class="msg-body">
+                <p><strong>Hi! I'm your ReelToReal Personal Planner.</strong></p>
+                <p>Ask me anything like <em>"Plan my Friday evening with ramen"</em> or <em>"Suggest a scenic hike and coffee"</em> and I'll generate a concrete, actionable itinerary citing your own saved clips.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chat Input -->
+          <div class="chat-input-area">
+            <div class="prompt-chips">
+              <button class="chip-btn" data-query="Plan my Friday evening with a great dinner and dessert spot">🍜 Evening Dinner Plan</button>
+              <button class="chip-btn" data-query="What are the best coffee shops and viewpoints I've saved?">☕ Coffee & Views</button>
+              <button class="chip-btn" data-query="Suggest a fun weekend activity with actionable tips">🧗 Weekend Activity</button>
+            </div>
+            <form class="chat-form" id="planner-form">
+              <input type="text" id="planner-input" class="chat-input" placeholder="Ask your planner (e.g. Plan my weekend in Tokyo)..." autocomplete="off">
+              <button type="submit" class="btn-primary" id="btn-send-plan">
+                <span>Plan</span> ✨
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Planner Sidebar: Grounded Clips Referenced -->
+        <div class="planner-sidebar">
+          <h4 class="sidebar-title">
+            <span>📌</span> Referenced Clips
+          </h4>
+          <div id="planner-citations-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <p style="font-size: 0.8rem; color: var(--text-muted);">Saved clips retrieved for your current plan will appear here with clickable timestamps & details.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: MAP VIEW -->
+    <section id="map-view" class="tab-view">
+      <div class="map-view-container">
+        <div id="map-element"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL 1: INGEST VIDEO / URL -->
+  <div class="modal-overlay" id="ingest-modal">
+    <div class="modal-card">
+      <button class="modal-close" id="btn-close-ingest">✕</button>
+      <h3 style="font-size: 1.3rem; margin-bottom: 0.4rem; color: #fff;">Ingest New Video</h3>
+      <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.5rem;">
+        Gemini AI will analyze audio, speech dialogue, visual frames, and on-screen text to extract actionable knowledge.
+      </p>
+
+      <!-- Direct Upload Dropzone (Primary Reliable Path) -->
+      <div class="upload-dropzone" id="upload-dropzone">
+        <div class="dropzone-icon">📹</div>
+        <h4 style="color: #fff; margin-bottom: 0.25rem;">Drag & drop video file here</h4>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Supports MP4, MOV, WEBM, MKV (Up to 50MB)</p>
+        <input type="file" id="file-input" accept="video/*" style="display: none;">
+        <button class="btn-primary" type="button" onclick="document.getElementById('file-input').click();">Browse Files</button>
+      </div>
+
+      <div class="divider-text">OR VIA PUBLIC LINK</div>
+
+      <!-- URL Ingestion Form -->
+      <form id="url-ingest-form">
+        <div class="url-form-group">
+          <input type="url" id="video-url-input" class="url-input" placeholder="Paste YouTube Short or Instagram Reel URL..." required>
+          <button type="submit" class="btn-primary" id="btn-submit-url">Analyze</button>
+        </div>
+      </form>
+
+      <!-- Processing Progress Box -->
+      <div class="processing-indicator" id="processing-indicator">
+        <div class="spinner"></div>
+        <h4 style="color: #fff; margin-bottom: 0.25rem;" id="processing-status-text">Uploading & Analyzing with Gemini...</h4>
+        <p style="font-size: 0.8rem; color: var(--text-secondary);">Reasoning jointly over spoken audio + visual frames + places...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: VIDEO PREVIEW & DETAILS -->
+  <div class="modal-overlay" id="video-preview-modal">
+    <div class="modal-card" style="max-width: 720px;">
+      <button class="modal-close" id="btn-close-preview">✕</button>
+      <h3 id="preview-modal-title" style="color: #fff; margin-bottom: 0.75rem;">Clip Details</h3>
+      <div id="preview-video-container" style="margin-bottom: 1rem; border-radius: var(--radius-sm); overflow: hidden; background: #000; text-align: center;">
+        <!-- Video element or fallback -->
+      </div>
+      <div id="preview-modal-details"></div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="/static/js/app.js"></script>
+  <script src="/static/js/chat.js"></script>
+  <script src="/static/js/map.js"></script>
+</body>
+</html>

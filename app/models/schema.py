@@ -1,0 +1,126 @@
+from enum import Enum
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field
+
+class CategoryEnum(str, Enum):
+    FOOD = "food"
+    TRAVEL = "travel"
+    ACTIVITY = "activity"
+    FITNESS = "fitness"
+    SHOPPING = "shopping"
+    PRODUCT = "product"
+    TIP = "tip"
+    OTHER = "other"
+
+class Entities(BaseModel):
+    place_name: Optional[str] = Field(
+        None, description="Name of the restaurant, café, viewpoint, landmark, store, or venue mentioned or shown"
+    )
+    city: Optional[str] = Field(
+        None, description="City, region, or general geographic location"
+    )
+    address_or_area: Optional[str] = Field(
+        None, description="Specific neighborhood, district, or street address if visible/mentioned"
+    )
+    cuisine_or_type: Optional[str] = Field(
+        None, description="Cuisine type (e.g. Ramen, Italian, Street Food) or specific activity type (e.g. Hiking, Pilates)"
+    )
+    price_cues: Optional[str] = Field(
+        None, description="Price indicators, average cost, budget-friendly cues or specific prices mentioned"
+    )
+    best_time_to_visit: Optional[str] = Field(
+        None, description="Timing, opening hours, sunset, seasonality, or best days/hours to go"
+    )
+    highlights: List[str] = Field(
+        default_factory=list,
+        description="Key dishes to order, specific photo spots, signature items, or unique attractions"
+    )
+    actionable_tips: List[str] = Field(
+        default_factory=list,
+        description="Crucial advice (e.g. 'book 2 weeks in advance', 'bring cash', 'parking is tight', 'ask for secret menu')"
+    )
+
+class VideoAnalysisResult(BaseModel):
+    title: str = Field(..., description="Short, descriptive title capturing the core subject of the clip")
+    category: CategoryEnum = Field(..., description="Primary classification of the content")
+    transcript_summary: str = Field(
+        ..., description="Comprehensive summary of what is spoken, voiceover dialogue, audio explanations, and background audio cues"
+    )
+    visual_summary: str = Field(
+        ..., description="Comprehensive summary of what is visually shown (scenes, dishes, atmosphere, interior/exterior, visual actions, on-screen text overlays)"
+    )
+    entities: Entities = Field(default_factory=Entities, description="Structured extracted key entities")
+    tags: List[str] = Field(
+        default_factory=list,
+        description="Keywords for filtering (e.g. ['ramen', 'tokyo', 'dinner', 'rainy day', 'cheap eats'])"
+    )
+    search_blob: str = Field(
+        ...,
+        description="Unified semantic text blob combining title, category, transcript, visuals, and entities for embedding generation"
+    )
+    confidence_notes: Optional[str] = Field(
+        None, description="Notes on clarity, audio quality, or assumptions made if video was partially ambiguous"
+    )
+
+class SavedItem(BaseModel):
+    id: str = Field(..., description="Unique ID for the saved clip")
+    source_type: str = Field(..., description="'file_upload' or 'url'")
+    source_identifier: str = Field(..., description="Original filename or source URL")
+    media_url: Optional[str] = Field(None, description="Local served video URL or source link")
+    analysis: VideoAnalysisResult
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    geocoded_address: Optional[str] = None
+    created_at: str = Field(..., description="ISO 8601 timestamp")
+
+class VideoProcessRequest(BaseModel):
+    url: str = Field(..., description="Public link to Instagram Reel, YouTube Short, or direct video URL")
+
+class VideoProcessResponse(BaseModel):
+    success: bool
+    message: str
+    source_type: str = Field(..., description="'file_upload' or 'url'")
+    source_identifier: str = Field(..., description="File name or original URL")
+    item: Optional[SavedItem] = None
+    analysis: Optional[VideoAnalysisResult] = None
+    processing_time_seconds: Optional[float] = None
+    error_details: Optional[str] = None
+
+class PlanQueryRequest(BaseModel):
+    query: str = Field(..., description="Natural language prompt, e.g. 'plan my evening - Chinese dinner'")
+    max_items: int = Field(5, description="Maximum number of relevant saved clips to retrieve for context")
+
+class CitationItem(BaseModel):
+    id: str
+    title: str
+    category: str
+    place_name: Optional[str] = None
+    city: Optional[str] = None
+    media_url: Optional[str] = None
+    similarity_score: float
+
+class PlanQueryResponse(BaseModel):
+    query: str
+    plan_narrative: str
+    citations: List[CitationItem]
+    referenced_item_ids: List[str]
+
+class MapPin(BaseModel):
+    id: str
+    title: str
+    category: str
+    latitude: float
+    longitude: float
+    place_name: Optional[str] = None
+    city: Optional[str] = None
+    highlights: List[str] = []
+    actionable_tips: List[str] = []
+    media_url: Optional[str] = None
+
+class HealthResponse(BaseModel):
+    status: str
+    gemini_api_configured: bool
+    model_configured: str
+    embedding_model_configured: str
+    total_saved_items: int
+    temp_dir: str

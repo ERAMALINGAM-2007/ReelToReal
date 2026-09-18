@@ -1,0 +1,30 @@
+Statement 1 — ReelToReal 
+
+Backstory 
+
+Everyone has a phone full of saved Instagram Reels and YouTube Shorts - a ramen spot, a weekend hike, “5 desserts to try in the city” - saved once and never opened again. The content itself is rich: what's actually shown and said in each clip. The opportunity isn't a better bookmark folder, it's an AI that actually understands what was saved and can act on it later, like a friend who remembers every place you've ever seen online. 
+
+Core Objective 
+
+Build an AI-first app where a user submits a video link or file, the app understands its audio and visual content, stores it in a personal knowledge base, and can later answer a natural-language planning question (“plan my evening - Chinese dinner”) using what's been saved. 
+
+MVP (Mandatory Features) 
+
+Ingestion: accept a video link or a direct file upload (upload must work as a reliable fallback, since scraping public reels/shorts can be blocked or rate-limited mid-hackathon). 
+
+Audio understanding: the app must understand what's actually said in the video, not just rely on a caption or title. 
+
+Visual understanding: the app must understand what's actually shown in the video (objects, food, places, activity), even when the caption says nothing useful. 
+
+Categorization & tagging: each saved item gets a type (food / travel / activity / product / tip) and key entities (place, cuisine, city, etc.) extracted automatically — no manual tagging by the user. 
+
+Personal knowledge base: saved items and everything extracted from them persist per user and can be retrieved later. 
+
+Planning query: a natural-language ask (“plan my evening — Chinese dinner”) returns a concrete recommendation grounded in the user's own saved content, not a generic answer. 
+
+Map view: once places are geocoded, plot them as pins on an interactive map (color/icon by category - food, travel, activity), clickable to jump back to the original saved clip. 
+
+Web UI: a place to see saved items and ask planning questions as conversational interface.
+
+
+
