@@ -91,6 +91,8 @@ def test_config_and_health():
         status="healthy",
         gemini_api_configured=settings.has_gemini_key(),
         model_configured=settings.GEMINI_MODEL,
+        embedding_model_configured=settings.GEMINI_EMBEDDING_MODEL,
+        total_saved_items=0,
         temp_dir=str(settings.TEMP_VIDEO_DIR)
     )
     print(f"  [OK] Health status: {health.status}, Gemini configured: {health.gemini_api_configured}")

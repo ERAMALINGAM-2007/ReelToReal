@@ -2,10 +2,10 @@ import json
 import time
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import google.generativeai as genai
 from app.config import settings
-from app.models.schema import VideoAnalysisResult, CategoryEnum, Entities
+from app.models.schema import VideoAnalysisResult, CategoryEnum, Entities, TimelineEvent
 
 logger = logging.getLogger(__name__)
 
@@ -14,30 +14,53 @@ class GeminiAnalysisError(Exception):
     pass
 
 SYSTEM_INSTRUCTION = """
-You are an expert AI video intelligence engine for 'ReelToReal', an application that converts saved Instagram Reels, YouTube Shorts, and short-form videos into actionable real-world plans and a personal knowledge base.
+You are the master multimodal video understanding intelligence engine for 'ReelToReal'.
 
-Your task is to thoroughly analyze both the AUDIO (spoken speech, dialogue, voiceovers, ambient sounds) and the VISUALS (food dishes, venues, scenery, action, interior/exterior decor, text overlays, captions, subtitles, logos).
+CRITICAL DIRECTIVE: YOUR ANALYSIS MUST BE 100% EXHAUSTIVE, DETAILED, AND COMPLETE.
+Do NOT simply give a high-level summary. If a vlogger or creator covers their entire day, multi-stop tour, multiple activities, or a complex routine, YOU MUST CAPTURE EVERY SINGLE THING that occurs in both AUDIO and VISUALS from the first second (0:00) to the last second of the clip.
 
-You MUST output ONLY a valid JSON object matching the exact schema below:
+You MUST extract and output ONLY a valid JSON object matching the exact schema below:
 
 {
-  "title": "<Catchy, highly descriptive 4-10 word title of what this clip is about>",
+  "title": "<Catchy, highly descriptive 4-10 word title capturing the entire clip>",
   "category": "<Must be one of: 'food', 'travel', 'activity', 'fitness', 'shopping', 'product', 'tip', 'other'>",
-  "transcript_summary": "<Detailed summary of all spoken words, dialogue, tips, and commentary in the audio. If no speech, describe musical cues or audio atmosphere>",
-  "visual_summary": "<Detailed summary of visual frames: dishes shown, storefront, ambiance, aesthetics, actions, and especially any on-screen text overlays, titles, or prices>",
+  "transcript_summary": "<Comprehensive overview of all speech, commentary, dialogue, voiceover, and musical cues>",
+  "full_audio_transcript": "<Near-verbatim, exhaustive breakdown of EVERYTHING said, explained, or discussed by the speaker(s) across the whole video>",
+  "visual_summary": "<Exhaustive summary of all visual scenes, outfits, camera movements, decor, lighting, foods, actions, and on-screen text overlays/captions>",
+  "timeline_events": [
+    {
+      "time_or_sequence": "<e.g. '0:00 - 0:12 / Morning', '0:13 - 0:30 / Midday', '0:31 - 0:50 / Evening'>",
+      "activity": "<Detailed description of what the person is doing or demonstrating in this specific segment>",
+      "location": "<Exact venue, restaurant, room, park, shop, or location name, or null>",
+      "audio_details": "<What is being said, explained, or heard in the audio during this specific segment>",
+      "visual_details": "<What is visually seen: items used, food dishes, decor, clothes, on-screen text, brand names, visual actions>"
+    }
+  ],
+  "all_places_visited": [
+    "<List of EVERY single place, venue, cafe, store, landmark, or location visited or shown>"
+  ],
+  "all_products_or_items": [
+    "<List of EVERY food item, drink, beauty product, tool, piece of clothing, or gadget featured>"
+  ],
   "entities": {
-    "place_name": "<Exact business, restaurant, café, peak, beach, or venue name, or null if unspecified>",
-    "city": "<City, state, or country, or null if unknown>",
-    "address_or_area": "<Specific neighborhood, district, street, or landmark if visible or mentioned, or null>",
-    "cuisine_or_type": "<Specific cuisine (e.g. Tonkotsu Ramen, Neapolitan Pizza) or activity type (e.g. Coastal Hike, Pottery Workshop), or null>",
-    "price_cues": "<Prices mentioned or visible, e.g. '$15-$25/person', 'Free entry', '$$$', or null>",
-    "best_time_to_visit": "<Recommended timing, e.g. 'Sunset', 'Weekdays before 12pm to avoid queue', or null>",
-    "highlights": ["<List of specific must-try dishes, scenic spots, or notable features shown/mentioned>"],
-    "actionable_tips": ["<List of practical tips: e.g. 'reservations mandatory', 'cash only', 'secret entrance on 2nd floor', 'bring hiking shoes'>"]
+    "place_name": "<Primary business, restaurant, café, viewpoint, landmark, or venue name, or null if multiple/unspecified>",
+    "city": "<City, region, or country, or null if unknown>",
+    "address_or_area": "<Specific neighborhood, district, or street if mentioned or shown, or null>",
+    "cuisine_or_type": "<Specific cuisine type (e.g. Japanese Ramen) or activity type (e.g. Daily Vlog, Skincare Routine, Bouldering), or null>",
+    "price_cues": "<Prices, budget indicators, entry costs, or price tags mentioned/shown, or null>",
+    "best_time_to_visit": "<Timing, opening hours, or best time mentioned, or null>",
+    "highlights": [
+      "<List of all notable moments, must-try dishes, key steps, or standout features>"
+    ],
+    "actionable_tips": [
+      "<List of ALL actionable tips, life hacks, advice, warnings, or recommendations given in the video>"
+    ]
   },
-  "tags": ["<5 to 10 relevant keywords for filtering and search, e.g. 'ramen', 'tokyo', 'dinner', 'rainy day', 'solo dining'>"],
-  "search_blob": "<A rich, dense paragraph combining the title, category, place, city, cuisine, transcript insights, and visual details. This text is embedded for semantic vector search and AI planning>",
-  "confidence_notes": "<Brief assessment of clarity or any unverified assumptions, or null>"
+  "tags": [
+    "<8 to 15 relevant searchable tags covering all activities, locations, vibes, and topics in the video>"
+  ],
+  "search_blob": "<A dense, comprehensive textual compilation of title, timeline activities, transcript, places, products, and tips for vector search>",
+  "confidence_notes": "<Brief assessment of clarity or audio/video fidelity, or null>"
 }
 """
 
@@ -65,7 +88,7 @@ class GeminiVideoAnalyzer:
     ) -> VideoAnalysisResult:
         """
         Uploads the video file to Gemini via Files API, waits for processing,
-        prompts the model for multimodal understanding, and parses the structured response.
+        prompts the model for exhaustive multimodal understanding, and parses the structured response.
         """
         if not self.is_configured():
             raise GeminiAnalysisError(
@@ -83,7 +106,6 @@ class GeminiVideoAnalyzer:
             uploaded_file = genai.upload_file(path=str(video_path))
             logger.info(f"File uploaded to Gemini as '{uploaded_file.name}'. Waiting for processing...")
 
-            # Wait for the file to be processed and ready for inference
             start_time = time.time()
             while uploaded_file.state.name == "PROCESSING":
                 if time.time() - start_time > max_wait_seconds:
@@ -94,11 +116,10 @@ class GeminiVideoAnalyzer:
             if uploaded_file.state.name == "FAILED":
                 raise GeminiAnalysisError(f"Gemini failed to process video file: {uploaded_file.name}")
 
-            logger.info(f"Video is ACTIVE and ready on Gemini. Sending multimodal reasoning prompt...")
+            logger.info("Video is ACTIVE and ready on Gemini. Sending exhaustive multimodal reasoning prompt...")
 
-            # Define candidate models in order of priority
+            # Define candidate models in order of priority, with robust fallback on quota limits
             model_candidates = [primary_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
-            # Deduplicate while preserving order
             model_candidates = list(dict.fromkeys(model_candidates))
 
             last_error = None
@@ -117,14 +138,15 @@ class GeminiVideoAnalyzer:
                     )
 
                     prompt = (
-                        "Analyze this video clip completely. Understand all spoken audio, music, visual scenes, "
-                        "on-screen text, foods, places, and activities. "
-                        "Extract all structured entities and actionable details into the required JSON schema."
+                        "Perform an EXHAUSTIVE, COMPLETE analysis of this video clip. "
+                        "Do not leave anything out. Break down every single sequential scene, activity, routine step, "
+                        "conversation, dish, product, location, and spoken insight from 0:00 to the end into the 'timeline_events' array. "
+                        "Extract all places visited, all products shown, and all actionable tips into the strict JSON schema."
                     )
 
                     response = model.generate_content([uploaded_file, prompt])
-                    response_text = response.text
-                    if response_text:
+                    if response and response.text:
+                        response_text = response.text
                         logger.info(f"Successfully received analysis from {candidate}")
                         break
                 except Exception as model_err:
@@ -144,7 +166,6 @@ class GeminiVideoAnalyzer:
             raise GeminiAnalysisError(f"Video analysis failed: {str(e)}")
 
         finally:
-            # Conserve Gemini storage quota by cleaning up the uploaded file
             if uploaded_file:
                 try:
                     genai.delete_file(uploaded_file.name)
@@ -155,7 +176,6 @@ class GeminiVideoAnalyzer:
     def _parse_and_validate_json(self, raw_json_str: str) -> VideoAnalysisResult:
         """Parses the JSON response and validates it against the Pydantic schema."""
         try:
-            # Strip markdown code blocks if present
             cleaned = raw_json_str.strip()
             if cleaned.startswith("```json"):
                 cleaned = cleaned[7:]
@@ -167,26 +187,39 @@ class GeminiVideoAnalyzer:
 
             data: Dict[str, Any] = json.loads(cleaned)
 
-            # Ensure valid category
             cat_str = str(data.get("category", "other")).lower()
             valid_cats = [c.value for c in CategoryEnum]
             if cat_str not in valid_cats:
                 cat_str = "other"
             data["category"] = cat_str
 
-            # Ensure entities dict exists
             if "entities" not in data or not isinstance(data["entities"], dict):
                 data["entities"] = {}
 
-            # Construct search_blob if missing or empty
+            if "timeline_events" not in data or not isinstance(data["timeline_events"], list):
+                data["timeline_events"] = []
+
+            if "all_places_visited" not in data or not isinstance(data["all_places_visited"], list):
+                data["all_places_visited"] = []
+
+            if "all_products_or_items" not in data or not isinstance(data["all_products_or_items"], list):
+                data["all_products_or_items"] = []
+
+            # Auto-construct search_blob if missing or empty
             if not data.get("search_blob"):
                 entities = data["entities"]
+                timeline_summary = " ; ".join([
+                    f"[{t.get('time_or_sequence', '')}] {t.get('activity', '')}: {t.get('audio_details', '')} ({t.get('visual_details', '')})"
+                    for t in data["timeline_events"]
+                ])
                 blob_parts = [
                     f"Title: {data.get('title', '')}",
                     f"Category: {data.get('category', '')}",
                     f"Place: {entities.get('place_name', '')}",
                     f"City: {entities.get('city', '')}",
-                    f"Cuisine/Type: {entities.get('cuisine_or_type', '')}",
+                    f"All Places: {', '.join(data.get('all_places_visited', []))}",
+                    f"All Products: {', '.join(data.get('all_products_or_items', []))}",
+                    f"Timeline: {timeline_summary}",
                     f"Transcript: {data.get('transcript_summary', '')}",
                     f"Visuals: {data.get('visual_summary', '')}",
                     f"Highlights: {', '.join(entities.get('highlights', []))}",

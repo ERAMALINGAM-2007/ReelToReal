@@ -99,6 +99,13 @@ class RAGPlannerService:
             ))
             referenced_ids.append(item.id)
 
+            timeline_str = ""
+            if hasattr(item.analysis, 'timeline_events') and item.analysis.timeline_events:
+                timeline_str = "\n- Chronological Timeline & Activities:\n" + "\n".join([
+                    f"  * [{t.time_or_sequence}] {t.activity} ({t.location or 'General'}): Spoken='{t.audio_details}', Visuals='{t.visual_details}'"
+                    for t in item.analysis.timeline_events
+                ])
+
             block = (
                 f"### Saved Item: {item.analysis.title} (ID: {item.id})\n"
                 f"- Category: {item.analysis.category.value}\n"
@@ -109,6 +116,7 @@ class RAGPlannerService:
                 f"- Actionable Tips: {', '.join(item.analysis.entities.actionable_tips) if item.analysis.entities.actionable_tips else 'N/A'}\n"
                 f"- Spoken Info: {item.analysis.transcript_summary}\n"
                 f"- Visual Details: {item.analysis.visual_summary}\n"
+                f"{timeline_str}\n"
             )
             context_blocks.append(block)
 

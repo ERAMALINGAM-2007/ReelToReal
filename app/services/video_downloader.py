@@ -34,7 +34,7 @@ class VideoDownloader:
         out_template = str(settings.TEMP_VIDEO_DIR / f"reel_{unique_id}.%(ext)s")
 
         ydl_opts = {
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'format': 'best[ext=mp4]/bestvideo+bestaudio/best',
             'outtmpl': out_template,
             'socket_timeout': settings.YT_DLP_TIMEOUT_SECONDS,
             'quiet': True,

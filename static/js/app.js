@@ -231,6 +231,7 @@ function renderFeedCards() {
         <p class="card-summary">${item.analysis.transcript_summary || item.analysis.visual_summary}</p>
         
         <div class="card-entities">
+          ${item.analysis.timeline_events && item.analysis.timeline_events.length > 0 ? `<div class="entity-row"><span class="entity-label" style="color: #60a5fa;">Timeline:</span><span class="entity-val" style="color: #60a5fa; font-weight: 700;">⏱️ ${item.analysis.timeline_events.length} activities logged</span></div>` : ''}
           ${item.analysis.entities.cuisine_or_type ? `<div class="entity-row"><span class="entity-label">Type:</span><span class="entity-val">${item.analysis.entities.cuisine_or_type}</span></div>` : ''}
           ${highlights ? `<div class="entity-row"><span class="entity-label">Must-try:</span><span class="entity-val">${highlights}</span></div>` : ''}
           ${tips ? `<div class="entity-row"><span class="entity-label">Tip:</span><span class="entity-val" style="color: #fbbf24;">${tips}</span></div>` : ''}
@@ -293,17 +294,67 @@ function openPreviewModal(id) {
 
   const highlights = (item.analysis.entities.highlights || []).map(h => `<li>${h}</li>`).join('');
   const tips = (item.analysis.entities.actionable_tips || []).map(t => `<li>${t}</li>`).join('');
+  
+  // Render Exhaustive Timeline
+  let timelineHtml = '';
+  if (item.analysis.timeline_events && item.analysis.timeline_events.length > 0) {
+    const events = item.analysis.timeline_events.map((ev, idx) => `
+      <div style="
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-left: 3px solid var(--accent-primary);
+        border-radius: 6px;
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.6rem;
+      ">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <span style="font-weight: 700; color: #fff; font-size: 0.9rem;">${idx + 1}. ${ev.activity}</span>
+          <span style="font-size: 0.75rem; color: #a5b4fc; background: rgba(99,102,241,0.15); padding: 2px 8px; border-radius: 4px;">⏱️ ${ev.time_or_sequence}</span>
+        </div>
+        ${ev.location ? `<div style="font-size: 0.75rem; color: #34d399; margin-bottom: 4px;">📍 Location: ${ev.location}</div>` : ''}
+        <div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 3px;"><strong>🗣️ Spoken Audio:</strong> ${ev.audio_details}</div>
+        <div style="font-size: 0.8rem; color: #94a3b8;"><strong>👁️ Visuals Shown:</strong> ${ev.visual_details}</div>
+      </div>
+    `).join('');
+
+    timelineHtml = `
+      <div style="margin-top: 1rem;">
+        <h4 style="color: #60a5fa; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 6px;">
+          <span>⏳</span> Chronological Activity Timeline (Every Event & Detail)
+        </h4>
+        <div style="max-height: 280px; overflow-y: auto; padding-right: 4px;">
+          ${events}
+        </div>
+      </div>
+    `;
+  }
+
+  // Places & Products tags
+  const placesHtml = (item.analysis.all_places_visited || []).map(p => `<span style="font-size: 0.75rem; background: rgba(14,165,233,0.15); color: #38bdf8; border: 1px solid rgba(14,165,233,0.3); padding: 2px 8px; border-radius: 4px;">📍 ${p}</span>`).join(' ');
+  const productsHtml = (item.analysis.all_products_or_items || []).map(pr => `<span style="font-size: 0.75rem; background: rgba(234,179,8,0.15); color: #facc15; border: 1px solid rgba(234,179,8,0.3); padding: 2px 8px; border-radius: 4px;">🛍️ ${pr}</span>`).join(' ');
 
   detailsBox.innerHTML = `
     <div style="margin-top: 1rem;">
-      <h4 style="color: #fff; margin-bottom: 0.25rem;">Audio & Spoken Summary</h4>
+      <h4 style="color: #fff; margin-bottom: 0.25rem;">Overall Audio & Spoken Summary</h4>
       <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">${item.analysis.transcript_summary}</p>
 
-      <h4 style="color: #fff; margin-bottom: 0.25rem;">Visual & Frame Summary</h4>
+      <h4 style="color: #fff; margin-bottom: 0.25rem;">Overall Visual & Frame Summary</h4>
       <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">${item.analysis.visual_summary}</p>
 
-      ${highlights ? `<h4 style="color: #facc15; margin-bottom: 0.25rem;">Highlights & Dishes</h4><ul style="font-size: 0.85rem; color: var(--text-secondary); padding-left: 1.25rem; margin-bottom: 0.75rem;">${highlights}</ul>` : ''}
+      ${placesHtml ? `<div style="margin-bottom: 0.75rem;"><strong style="font-size: 0.8rem; color: #fff;">Places Visited:</strong> <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;">${placesHtml}</div></div>` : ''}
+      ${productsHtml ? `<div style="margin-bottom: 0.75rem;"><strong style="font-size: 0.8rem; color: #fff;">Featured Products / Dishes:</strong> <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;">${productsHtml}</div></div>` : ''}
+
+      ${timelineHtml}
+
+      ${highlights ? `<h4 style="color: #facc15; margin-top: 1rem; margin-bottom: 0.25rem;">Key Highlights</h4><ul style="font-size: 0.85rem; color: var(--text-secondary); padding-left: 1.25rem; margin-bottom: 0.75rem;">${highlights}</ul>` : ''}
       ${tips ? `<h4 style="color: #f87171; margin-bottom: 0.25rem;">Actionable Tips</h4><ul style="font-size: 0.85rem; color: var(--text-secondary); padding-left: 1.25rem; margin-bottom: 0.75rem;">${tips}</ul>` : ''}
+      
+      ${item.analysis.full_audio_transcript ? `
+        <details style="margin-top: 0.75rem; background: rgba(0,0,0,0.25); padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.8rem;">
+          <summary style="cursor: pointer; color: #a5b4fc; font-weight: 600;">📜 Full Spoken Dialogue Breakdown</summary>
+          <p style="color: var(--text-secondary); margin-top: 0.5rem; white-space: pre-wrap;">${item.analysis.full_audio_transcript}</p>
+        </details>
+      ` : ''}
     </div>
   `;
 

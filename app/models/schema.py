@@ -40,14 +40,46 @@ class Entities(BaseModel):
         description="Crucial advice (e.g. 'book 2 weeks in advance', 'bring cash', 'parking is tight', 'ask for secret menu')"
     )
 
+class TimelineEvent(BaseModel):
+    time_or_sequence: str = Field(
+        ..., description="Timestamp or time of day (e.g. '0:00 - 0:15 / Morning', 'Afternoon', 'Evening')"
+    )
+    activity: str = Field(
+        ..., description="Specific activity performed, discussed, or shown"
+    )
+    location: Optional[str] = Field(
+        None, description="Venue, shop, restaurant, room, or location name if identifiable"
+    )
+    audio_details: str = Field(
+        ..., description="Everything said, explained, or heard in the audio for this part"
+    )
+    visual_details: str = Field(
+        ..., description="Everything visually shown on screen: objects, outfits, food, on-screen text, surroundings"
+    )
+
 class VideoAnalysisResult(BaseModel):
     title: str = Field(..., description="Short, descriptive title capturing the core subject of the clip")
     category: CategoryEnum = Field(..., description="Primary classification of the content")
     transcript_summary: str = Field(
         ..., description="Comprehensive summary of what is spoken, voiceover dialogue, audio explanations, and background audio cues"
     )
+    full_audio_transcript: Optional[str] = Field(
+        None, description="Exhaustive, detailed transcription/breakdown of all spoken dialogue, tips, and voiceovers"
+    )
     visual_summary: str = Field(
-        ..., description="Comprehensive summary of what is visually shown (scenes, dishes, atmosphere, interior/exterior, visual actions, on-screen text overlays)"
+        ..., description="Comprehensive summary of what is visually shown across all frames"
+    )
+    timeline_events: List[TimelineEvent] = Field(
+        default_factory=list,
+        description="Exhaustive chronological sequence of EVERY activity, scene, routine, and event in the video from start to finish"
+    )
+    all_places_visited: List[str] = Field(
+        default_factory=list,
+        description="Complete list of all places, shops, venues, or locations visited or shown in the clip"
+    )
+    all_products_or_items: List[str] = Field(
+        default_factory=list,
+        description="Complete list of all foods, drinks, skincare, gadgets, clothing, or items featured"
     )
     entities: Entities = Field(default_factory=Entities, description="Structured extracted key entities")
     tags: List[str] = Field(
@@ -56,7 +88,7 @@ class VideoAnalysisResult(BaseModel):
     )
     search_blob: str = Field(
         ...,
-        description="Unified semantic text blob combining title, category, transcript, visuals, and entities for embedding generation"
+        description="Unified semantic text blob combining title, category, transcript, visuals, timeline, and entities for embedding generation"
     )
     confidence_notes: Optional[str] = Field(
         None, description="Notes on clarity, audio quality, or assumptions made if video was partially ambiguous"
