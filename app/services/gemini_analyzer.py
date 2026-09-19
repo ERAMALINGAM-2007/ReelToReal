@@ -155,10 +155,10 @@ class GeminiVideoAnalyzer:
             # Define candidate models in order of priority, using active Google Generative AI v1beta models
             model_candidates = [
                 primary_model,
+                "gemini-3.8-flash",
                 "gemini-3.5-flash",
                 "gemini-3.6-flash",
                 "gemini-3.7-flash",
-                "gemini-3.8-flash",
                 "gemini-2.5-flash"
             ]
             model_candidates = list(dict.fromkeys(model_candidates))
