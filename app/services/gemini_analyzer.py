@@ -1,6 +1,7 @@
 import json
 import time
 import logging
+import mimetypes
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 import google.generativeai as genai
@@ -8,6 +9,38 @@ from app.config import settings
 from app.models.schema import VideoAnalysisResult, CategoryEnum, Entities, TimelineEvent
 
 logger = logging.getLogger(__name__)
+
+MIME_TYPE_MAPPING = {
+    ".mp4": "video/mp4",
+    ".m4v": "video/mp4",
+    ".mov": "video/quicktime",
+    ".webm": "video/webm",
+    ".mkv": "video/x-matroska",
+    ".avi": "video/x-msvideo",
+    ".wmv": "video/x-ms-wmv",
+    ".flv": "video/x-flv",
+    ".3gp": "video/3gpp",
+    ".ts": "video/mp2t",
+    ".mpeg": "video/mpeg",
+    ".mpg": "video/mpeg",
+    ".ogv": "video/ogg",
+    ".mp3": "audio/mp3",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".ogg": "audio/ogg",
+    ".flac": "audio/flac",
+}
+
+def resolve_media_mime_type(file_path: Path) -> str:
+    """Robustly determines the MIME type for media uploads, avoiding Windows registry lookup issues."""
+    ext = file_path.suffix.lower()
+    if ext in MIME_TYPE_MAPPING:
+        return MIME_TYPE_MAPPING[ext]
+    guessed, _ = mimetypes.guess_type(str(file_path))
+    if guessed:
+        return guessed
+    return "video/mp4"
 
 class GeminiAnalysisError(Exception):
     """Exception raised for errors during Gemini multimodal analysis."""
@@ -102,8 +135,9 @@ class GeminiVideoAnalyzer:
         uploaded_file = None
 
         try:
-            logger.info(f"Uploading video file to Gemini Files API: {video_path.name}")
-            uploaded_file = genai.upload_file(path=str(video_path))
+            mime_type = resolve_media_mime_type(video_path)
+            logger.info(f"Uploading video file to Gemini Files API: {video_path.name} (mime_type: {mime_type})")
+            uploaded_file = genai.upload_file(path=str(video_path), mime_type=mime_type)
             logger.info(f"File uploaded to Gemini as '{uploaded_file.name}'. Waiting for processing...")
 
             start_time = time.time()

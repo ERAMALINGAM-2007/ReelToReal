@@ -10,7 +10,14 @@ if sys.platform == "win32":
 
 import uuid
 from app.config import settings
-from app.models.schema import VideoAnalysisResult, CategoryEnum, Entities, PlanQueryRequest
+from app.models.schema import (
+    VideoAnalysisResult,
+    CategoryEnum,
+    Entities,
+    PlanQueryRequest,
+    ChatMessage,
+    PlanStop
+)
 from app.services.storage_service import StorageService
 from app.services.embedding_service import EmbeddingService
 from app.services.geocoding_service import GeocodingService
@@ -152,16 +159,98 @@ def test_full_pipeline():
     assert len(pins) >= 3
     print(f"  [OK] Extracted {len(pins)} map pins with geocoded coordinates!")
 
-    # 5. Test RAG Conversational Planner
-    print("[5/5] Testing RAG Conversational Planner...")
-    plan_resp = planner.generate_plan(PlanQueryRequest(query="Plan my evening with ramen in Tokyo", max_items=3))
-    print("  [OK] Planner response generated!")
-    print(f"  Citations count: {len(plan_resp.citations)}")
-    print(f"  Referenced IDs: {plan_resp.referenced_item_ids}")
-    print("\n--- Sample AI Generated Plan Preview ---")
-    print(plan_resp.plan_narrative[:300] + "...\n---------------------------------------")
+    # 5. Test Grounded Conversational Planner (Multi-turn & Route Stops)
+    print("[5/6] Testing Grounded Conversational Planner (Multi-turn & Stops)...")
+    plan_resp1 = planner.generate_plan(PlanQueryRequest(query="Plan my evening with ramen in Tokyo", max_items=3))
+    print("  [OK] Initial Turn 1 plan generated!")
+    print(f"  Citations count: {len(plan_resp1.citations)}")
+    print(f"  Stops extracted: {len(plan_resp1.stops)}")
+    assert len(plan_resp1.citations) >= 1
+    assert len(plan_resp1.stops) >= 1
 
-    print("="*50 + "\nALL INTEGRATION TESTS PASSED SUCCESSFULLY! [OK]")
+    # Turn 2: Follow-up query with conversational history
+    plan_resp2 = planner.generate_plan(PlanQueryRequest(
+        query="What dessert spot from my saved clips can we go to after?",
+        max_items=3,
+        chat_history=[
+            ChatMessage(role="user", content="Plan my evening with ramen in Tokyo"),
+            ChatMessage(role="assistant", content=plan_resp1.plan_narrative)
+        ]
+    ))
+    print("  [OK] Turn 2 follow-up plan with conversational memory generated!")
+    assert len(plan_resp2.citations) > 0
+    print(f"  Follow-up Citations: {[c.title for c in plan_resp2.citations]}")
+    print(f"  Follow-up Stops: {[s.place_name for s in plan_resp2.stops]}")
+    print("\n--- Sample AI Generated Follow-Up Preview ---")
+    print(plan_resp2.plan_narrative[:250] + "...\n---------------------------------------")
+
+    # 6. Test Personal Knowledge Base (Per-User Isolation, Notes, Stats, Export)
+    print("[6/6] Testing Personal Knowledge Base Features (Isolation, Notes, Stats, Export)...")
+    
+    # 6a. Register user profiles
+    u_ramu = storage.create_user("ramu", "Ramu's Curated KB")
+    u_alex = storage.create_user("alex", "Alex's Travel Journal")
+    assert u_ramu.user_id == "ramu"
+    assert u_alex.user_id == "alex"
+
+    # 6b. Save clip scoped to Ramu
+    analysis_ramu = VideoAnalysisResult(
+        title="Ramu's Secret Matcha Cafe in Ginza",
+        category=CategoryEnum.FOOD,
+        transcript_summary="Famous rich matcha parfait served in traditional ceramic cups.",
+        visual_summary="Deep green matcha layers, cozy tearoom decor, wooden counter.",
+        entities=Entities(
+            place_name="Cha Ginza",
+            city="Tokyo",
+            address_or_area="Ginza",
+            cuisine_or_type="Japanese Tea & Sweets",
+            highlights=["Organic uji matcha", "Matcha parfait"],
+            actionable_tips=["Reserve 1 day in advance"]
+        ),
+        tags=["matcha", "tokyo", "ginza", "dessert"],
+        search_blob="Cha Ginza | Tokyo | Matcha | Sweets"
+    )
+    storage.save_item(
+        item_id="item_ramu_matcha_01",
+        user_id="ramu",
+        source_type="file_upload",
+        source_identifier="matcha_clip.mp4",
+        analysis=analysis_ramu,
+        latitude=35.6719,
+        longitude=139.7640,
+        personal_notes="Must take friends here next summer!"
+    )
+
+    # 6c. Verify Isolation
+    ramu_items = storage.get_all_items(user_id="ramu")
+    alex_items = storage.get_all_items(user_id="alex")
+    assert any(it.id == "item_ramu_matcha_01" for it in ramu_items), "Ramu should have the saved matcha clip"
+    assert not any(it.id == "item_ramu_matcha_01" for it in alex_items), "Alex should NOT see Ramu's clip"
+    print("  [OK] Strict user isolation verified! Ramu's clips are private from Alex.")
+
+    # 6d. Test Personal Notes Updating
+    updated = storage.update_item(
+        item_id="item_ramu_matcha_01",
+        user_id="ramu",
+        personal_notes="Updated: Visited on Friday, ordered the grade-A set."
+    )
+    assert updated is not None
+    assert updated.personal_notes == "Updated: Visited on Friday, ordered the grade-A set."
+    print("  [OK] Personal notes updated and persisted successfully!")
+
+    # 6e. Test Knowledge Base Analytics & Export
+    stats = storage.get_user_stats("ramu")
+    assert stats.total_items >= 1
+    assert stats.total_mapped_places >= 1
+    assert "Tokyo" in stats.top_cities
+    
+    export_payload = storage.export_user_data("ramu")
+    assert export_payload["user_id"] == "ramu"
+    assert len(export_payload["items"]) >= 1
+    print(f"  [OK] Knowledge Base stats & JSON export verified! (Exported {len(export_payload['items'])} items)")
+
+    print("="*50 + "\nALL INTEGRATION & PERSONAL KNOWLEDGE BASE TESTS PASSED! [OK]")
 
 if __name__ == "__main__":
     test_full_pipeline()
+

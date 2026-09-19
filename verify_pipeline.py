@@ -84,8 +84,18 @@ def test_downloader_fallback():
         assert "upload" in e.user_friendly_message.lower()
         print("  [OK] Graceful fallback error message verified!")
 
+def test_mime_resolution():
+    print("[4/5] Testing MIME type resolution for Gemini upload...")
+    from app.services.gemini_analyzer import resolve_media_mime_type
+    assert resolve_media_mime_type(Path("sample.mp4")) == "video/mp4"
+    assert resolve_media_mime_type(Path("sample.webm")) == "video/webm"
+    assert resolve_media_mime_type(Path("sample.mkv")) == "video/x-matroska"
+    assert resolve_media_mime_type(Path("sample.mov")) == "video/quicktime"
+    assert resolve_media_mime_type(Path("sample.unknown_ext")) == "video/mp4"
+    print("  [OK] MIME type resolution handles all formats and Windows fallbacks correctly!")
+
 def test_config_and_health():
-    print("[4/4] Testing configuration and directories...")
+    print("[5/5] Testing configuration and directories...")
     assert settings.TEMP_VIDEO_DIR.exists()
     health = HealthResponse(
         status="healthy",
@@ -102,5 +112,6 @@ if __name__ == "__main__":
     test_schema_serialization()
     test_gemini_json_parser()
     test_downloader_fallback()
+    test_mime_resolution()
     test_config_and_health()
-    print("="*45 + "\nALL 4 TESTS PASSED SUCCESSFULLY! [OK]")
+    print("="*45 + "\nALL 5 TESTS PASSED SUCCESSFULLY! [OK]")

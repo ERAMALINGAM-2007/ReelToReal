@@ -45,16 +45,16 @@ class TimelineEvent(BaseModel):
         ..., description="Timestamp or time of day (e.g. '0:00 - 0:15 / Morning', 'Afternoon', 'Evening')"
     )
     activity: str = Field(
-        ..., description="Specific activity performed, discussed, or shown"
+        default="", description="Specific activity performed, discussed, or shown"
     )
     location: Optional[str] = Field(
         None, description="Venue, shop, restaurant, room, or location name if identifiable"
     )
     audio_details: str = Field(
-        ..., description="Everything said, explained, or heard in the audio for this part"
+        default="", description="Everything said, explained, or heard in the audio for this part"
     )
     visual_details: str = Field(
-        ..., description="Everything visually shown on screen: objects, outfits, food, on-screen text, surroundings"
+        default="", description="Everything visually shown on screen: objects, outfits, food, on-screen text, surroundings"
     )
 
 class VideoAnalysisResult(BaseModel):
@@ -96,6 +96,7 @@ class VideoAnalysisResult(BaseModel):
 
 class SavedItem(BaseModel):
     id: str = Field(..., description="Unique ID for the saved clip")
+    user_id: str = Field(default="default", description="Owner user ID of the saved knowledge")
     source_type: str = Field(..., description="'file_upload' or 'url'")
     source_identifier: str = Field(..., description="Original filename or source URL")
     media_url: Optional[str] = Field(None, description="Local served video URL or source link")
@@ -103,10 +104,30 @@ class SavedItem(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     geocoded_address: Optional[str] = None
+    personal_notes: Optional[str] = Field(default="", description="User's custom notes or annotations")
     created_at: str = Field(..., description="ISO 8601 timestamp")
+
+class ItemUpdateRequest(BaseModel):
+    personal_notes: Optional[str] = None
+    tags: Optional[List[str]] = None
+    place_name: Optional[str] = None
+    city: Optional[str] = None
+
+class UserProfile(BaseModel):
+    user_id: str
+    display_name: str
+    created_at: Optional[str] = None
+
+class KnowledgeBaseStats(BaseModel):
+    user_id: str
+    total_items: int
+    categories: Dict[str, int]
+    total_mapped_places: int
+    top_cities: List[str]
 
 class VideoProcessRequest(BaseModel):
     url: str = Field(..., description="Public link to Instagram Reel, YouTube Short, or direct video URL")
+    user_id: Optional[str] = Field(default="default", description="User ID for personal knowledge base")
 
 class VideoProcessResponse(BaseModel):
     success: bool
@@ -118,9 +139,24 @@ class VideoProcessResponse(BaseModel):
     processing_time_seconds: Optional[float] = None
     error_details: Optional[str] = None
 
+class ChatMessage(BaseModel):
+    role: str = Field(..., description="'user' or 'assistant'")
+    content: str = Field(..., description="Message text")
+
+class PlanStop(BaseModel):
+    stop_number: int
+    time_or_period: str = Field(..., description="e.g. '6:30 PM - 7:30 PM' or 'Morning'")
+    place_name: str
+    activity: str
+    item_id: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
 class PlanQueryRequest(BaseModel):
     query: str = Field(..., description="Natural language prompt, e.g. 'plan my evening - Chinese dinner'")
     max_items: int = Field(5, description="Maximum number of relevant saved clips to retrieve for context")
+    user_id: Optional[str] = Field(default="default", description="User ID for personal knowledge base scoping")
+    chat_history: List[ChatMessage] = Field(default_factory=list, description="Prior conversation history for multi-turn planning")
 
 class CitationItem(BaseModel):
     id: str
@@ -136,6 +172,7 @@ class PlanQueryResponse(BaseModel):
     plan_narrative: str
     citations: List[CitationItem]
     referenced_item_ids: List[str]
+    stops: List[PlanStop] = Field(default_factory=list, description="Structured timetable stops with coordinates for map routing")
 
 class MapPin(BaseModel):
     id: str
@@ -156,3 +193,4 @@ class HealthResponse(BaseModel):
     embedding_model_configured: str
     total_saved_items: int
     temp_dir: str
+

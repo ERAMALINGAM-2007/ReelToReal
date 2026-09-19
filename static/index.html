@@ -45,6 +45,13 @@
 
     <!-- Header Actions -->
     <div class="header-actions">
+      <div class="user-profile-selector" id="user-profile-selector">
+        <span>👤</span>
+        <select id="user-profile-select" title="Switch Personal Knowledge Base">
+          <option value="default">Default User</option>
+        </select>
+        <button id="btn-add-profile" class="btn-profile-add" title="Create New Profile">+</button>
+      </div>
       <button class="btn-primary" id="btn-open-ingest">
         <span>+</span> Ingest Video
       </button>
@@ -56,6 +63,24 @@
 
     <!-- TAB 1: KNOWLEDGE BASE FEED VIEW -->
     <section id="feed-view" class="tab-view active">
+      <!-- Personal Knowledge Base Summary Bar -->
+      <div class="kb-stats-bar" id="kb-stats-bar">
+        <div class="kb-stat-pill">
+          <span>📚</span> <strong id="stat-total-clips">0</strong> Saved Clips
+        </div>
+        <div class="kb-stat-pill">
+          <span>📍</span> <strong id="stat-mapped-places">0</strong> Geocoded Spots
+        </div>
+        <div class="kb-stat-pill" id="stat-top-cities-pill">
+          <span>🏙️</span> <span id="stat-top-cities">None yet</span>
+        </div>
+        <div style="margin-left: auto; display: flex; gap: 8px;">
+          <button class="btn-kb-action" id="btn-export-kb" title="Download your personal knowledge base as JSON backup">
+            <span>💾</span> Export Knowledge Base
+          </button>
+        </div>
+      </div>
+
       <div class="controls-bar">
         <div class="category-pills">
           <button class="cat-pill active" data-category="all">All</button>
@@ -196,6 +221,24 @@
         <!-- Video element or fallback -->
       </div>
       <div id="preview-modal-details"></div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: CREATE NEW PROFILE -->
+  <div class="modal-overlay" id="new-profile-modal">
+    <div class="modal-card" style="max-width: 440px;">
+      <button class="modal-close" id="btn-close-new-profile">✕</button>
+      <h3 style="color: #fff; margin-bottom: 0.5rem;">New Personal Knowledge Base</h3>
+      <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem;">
+        Create an isolated personal knowledge base (e.g., "Ramu", "Tokyo Trip 2026", "Foodie Journal").
+      </p>
+      <form id="new-profile-form">
+        <div style="margin-bottom: 1.25rem;">
+          <label style="display: block; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 6px; font-weight: 600;">Profile / User Name</label>
+          <input type="text" id="new-profile-name" class="url-input" placeholder="e.g. Ramu, Travel 2026" required style="width: 100%;">
+        </div>
+        <button type="submit" class="btn-primary" style="width: 100%; justify-content: center;">Create & Switch Profile</button>
+      </form>
     </div>
   </div>
 

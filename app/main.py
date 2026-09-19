@@ -4,7 +4,7 @@ import shutil
 import logging
 from pathlib import Path
 from typing import Optional, List
-from fastapi import FastAPI, UploadFile, File, HTTPException, status, Query
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -18,7 +18,10 @@ from app.models.schema import (
     PlanQueryResponse,
     HealthResponse,
     SavedItem,
-    MapPin
+    MapPin,
+    ItemUpdateRequest,
+    UserProfile,
+    KnowledgeBaseStats
 )
 from app.services.gemini_analyzer import GeminiVideoAnalyzer, GeminiAnalysisError
 from app.services.video_downloader import VideoDownloader, VideoDownloadError
@@ -77,30 +80,82 @@ async def health_check():
     )
 
 @app.get("/api/items", response_model=List[SavedItem], tags=["Knowledge Base"])
-async def list_saved_items(category: Optional[str] = Query(None, description="Filter by category")):
-    """Retrieves all saved items in the personal knowledge base."""
-    return storage_service.get_all_items(category=category)
+async def list_saved_items(
+    category: Optional[str] = Query(None, description="Filter by category"),
+    user_id: Optional[str] = Query("default", description="Filter by user profile")
+):
+    """Retrieves all saved items in the personal knowledge base for a user."""
+    return storage_service.get_all_items(category=category, user_id=user_id)
 
 @app.get("/api/items/{item_id}", response_model=SavedItem, tags=["Knowledge Base"])
-async def get_saved_item(item_id: str):
+async def get_saved_item(
+    item_id: str,
+    user_id: Optional[str] = Query(None, description="Optional user scoping")
+):
     """Retrieves a single saved item by ID."""
-    item = storage_service.get_item_by_id(item_id)
+    item = storage_service.get_item_by_id(item_id, user_id=user_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found.")
     return item
 
+@app.put("/api/items/{item_id}", response_model=SavedItem, tags=["Knowledge Base"])
+async def update_saved_item(
+    item_id: str,
+    payload: ItemUpdateRequest,
+    user_id: Optional[str] = Query(None, description="Optional user scoping")
+):
+    """Updates personal notes or tags for a saved item."""
+    updated = storage_service.update_item(
+        item_id=item_id,
+        user_id=user_id,
+        personal_notes=payload.personal_notes,
+        tags=payload.tags,
+        place_name=payload.place_name,
+        city=payload.city
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Item not found.")
+    return updated
+
 @app.delete("/api/items/{item_id}", tags=["Knowledge Base"])
-async def delete_saved_item(item_id: str):
+async def delete_saved_item(
+    item_id: str,
+    user_id: Optional[str] = Query(None, description="Optional user scoping")
+):
     """Deletes an item from the knowledge base."""
-    success = storage_service.delete_item(item_id)
+    success = storage_service.delete_item(item_id, user_id=user_id)
     if not success:
         raise HTTPException(status_code=404, detail="Item not found.")
     return {"success": True, "message": "Item deleted."}
 
+@app.get("/api/kb/stats", response_model=KnowledgeBaseStats, tags=["Knowledge Base"])
+async def get_knowledge_base_stats(
+    user_id: str = Query("default", description="User ID for personal stats")
+):
+    """Retrieves personal knowledge base metrics and breakdown."""
+    return storage_service.get_user_stats(user_id=user_id)
+
+@app.get("/api/kb/export", tags=["Knowledge Base"])
+async def export_knowledge_base(
+    user_id: str = Query("default", description="User ID to export")
+):
+    """Exports full personal knowledge base as downloadable JSON."""
+    return storage_service.export_user_data(user_id=user_id)
+
+@app.get("/api/users", response_model=List[UserProfile], tags=["Users & Profiles"])
+async def list_user_profiles():
+    """Lists all registered user profiles."""
+    return storage_service.list_users()
+
+@app.post("/api/users", response_model=UserProfile, tags=["Users & Profiles"])
+async def create_user_profile(payload: UserProfile):
+    """Creates or switches to a user profile."""
+    return storage_service.create_user(payload.user_id, payload.display_name)
+
 @app.get("/api/map/pins", response_model=List[MapPin], tags=["Map View"])
-async def get_map_pins():
-    """Retrieves all geocoded locations for plotting on Leaflet map."""
-    return storage_service.get_map_pins()
+async def get_map_pins(user_id: Optional[str] = Query("default", description="User scoping")):
+    """Retrieves all geocoded locations for plotting on Leaflet map for a user."""
+    return storage_service.get_map_pins(user_id=user_id)
 
 @app.post("/api/plan", response_model=PlanQueryResponse, tags=["AI Planner"])
 async def generate_plan_endpoint(payload: PlanQueryRequest):
@@ -110,7 +165,10 @@ async def generate_plan_endpoint(payload: PlanQueryRequest):
     return rag_planner.generate_plan(payload)
 
 @app.post("/api/process/file", response_model=VideoProcessResponse, tags=["Ingestion & Analysis"])
-async def process_video_file(file: UploadFile = File(...)):
+async def process_video_file(
+    file: UploadFile = File(...),
+    user_id: str = Form("default")
+):
     """
     Direct file upload pipeline:
     1. Ingestion & validation.
@@ -190,7 +248,8 @@ async def process_video_file(file: UploadFile = File(...)):
             longitude=lon,
             geocoded_address=geo_addr,
             media_path=str(media_dest_path),
-            media_url=media_url
+            media_url=media_url,
+            user_id=user_id
         )
 
         elapsed = round(time.time() - start_time, 2)
@@ -296,7 +355,8 @@ async def process_video_url(payload: VideoProcessRequest):
             longitude=lon,
             geocoded_address=geo_addr,
             media_path=str(media_dest_path),
-            media_url=media_url
+            media_url=media_url,
+            user_id=payload.user_id or "default"
         )
 
         elapsed = round(time.time() - start_time, 2)
