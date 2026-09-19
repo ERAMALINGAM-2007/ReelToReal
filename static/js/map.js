@@ -20,11 +20,11 @@ class MapManager {
     }
 
     try {
-      // Create Leaflet map
+      // Create Leaflet map centered on India by default
       this.map = L.map('map-element', {
         zoomControl: true,
         attributionControl: true
-      }).setView([35.6762, 139.6503], 12);
+      }).setView([20.5937, 78.9629], 5);
 
       // OpenStreetMap standard tile layer - 100% free, public, no API key needed
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -33,9 +33,34 @@ class MapManager {
       }).addTo(this.map);
 
       this.initialized = true;
+      this.bindMapControls();
       this.loadPins();
     } catch (err) {
       console.error("Error initializing Leaflet map:", err);
+    }
+  }
+
+  bindMapControls() {
+    const btnIndia = document.getElementById('btn-map-recenter-india');
+    if (btnIndia) {
+      btnIndia.onclick = () => this.recenterOnIndia();
+    }
+  }
+
+  recenterOnIndia() {
+    if (!this.map) return;
+    const indiaPins = [];
+    this.markers.forEach(m => {
+      const ll = m.getLatLng();
+      if (ll && ll.lat >= 6.0 && ll.lat <= 37.5 && ll.lng >= 68.0 && ll.lng <= 97.5) {
+        indiaPins.push([ll.lat, ll.lng]);
+      }
+    });
+
+    if (indiaPins.length > 0) {
+      this.map.fitBounds(indiaPins, { padding: [60, 60], maxZoom: 12 });
+    } else {
+      this.map.setView([20.5937, 78.9629], 5);
     }
   }
 
@@ -43,6 +68,7 @@ class MapManager {
     if (!this.initialized) {
       this.initMap();
     }
+    this.bindMapControls();
     if (this.map) {
       setTimeout(() => {
         this.map.invalidateSize();
@@ -69,21 +95,35 @@ class MapManager {
       });
       this.markers = [];
 
-      if (!pins || pins.length === 0) return;
+      if (!pins || pins.length === 0) {
+        this.map.setView([20.5937, 78.9629], 5);
+        return;
+      }
 
-      const group = [];
+      const allPins = [];
+      const indiaPins = [];
 
       pins.forEach(pin => {
         if (pin.latitude && pin.longitude) {
           const marker = this.createCategoryMarker(pin);
           marker.addTo(this.map);
           this.markers.push(marker);
-          group.push([pin.latitude, pin.longitude]);
+          allPins.push([pin.latitude, pin.longitude]);
+
+          // Check if coordinate is in the India geographic region
+          if (pin.latitude >= 6.0 && pin.latitude <= 37.5 && pin.longitude >= 68.0 && pin.longitude <= 97.5) {
+            indiaPins.push([pin.latitude, pin.longitude]);
+          }
         }
       });
 
-      if (group.length > 0) {
-        this.map.fitBounds(group, { padding: [50, 50], maxZoom: 14 });
+      // If there are pins in India, prioritize framing them
+      if (indiaPins.length > 0) {
+        this.map.fitBounds(indiaPins, { padding: [60, 60], maxZoom: 12 });
+      } else if (allPins.length > 0) {
+        this.map.fitBounds(allPins, { padding: [60, 60], maxZoom: 12 });
+      } else {
+        this.map.setView([20.5937, 78.9629], 5);
       }
     } catch (err) {
       console.error("Failed to load map pins:", err);
