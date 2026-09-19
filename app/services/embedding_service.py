@@ -37,8 +37,20 @@ class EmbeddingService:
         if not text or not text.strip():
             return []
 
+        # Normalize model aliases (e.g. 'embedding-002', 'gemini-embedding-002' -> 'models/gemini-embedding-2')
+        norm_model = self.model
+        if "embedding-002" in norm_model or "embedding-2" in norm_model:
+            norm_model = "models/gemini-embedding-2"
+        elif "embedding-001" in norm_model or "embedding-1" in norm_model:
+            norm_model = "models/gemini-embedding-001"
+
         # Candidate embedding models
-        candidates = [self.model, "models/gemini-embedding-001", "models/gemini-embedding-2", "models/embedding-001"]
+        candidates = [
+            norm_model,
+            "models/gemini-embedding-2",
+            "models/gemini-embedding-2-preview",
+            "models/gemini-embedding-001"
+        ]
         candidates = list(dict.fromkeys(candidates))
 
         last_err = None
