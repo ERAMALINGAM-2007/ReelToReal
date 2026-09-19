@@ -15,6 +15,7 @@ from app.models.schema import (
 )
 from app.services.embedding_service import EmbeddingService
 from app.services.storage_service import StorageService
+from app.services.vector_store_service import VectorStoreService
 
 logger = logging.getLogger(__name__)
 
@@ -44,18 +45,20 @@ CRITICAL RULES:
 
 class RAGPlannerService:
     """
-    RAG-powered conversational planner that retrieves saved clips and synthesizes grounded plans
-    with multi-turn conversational memory and structured map routing stops.
+    RAG-powered conversational planner that retrieves saved clips using ChromaDB vector search
+    and synthesizes grounded plans with multi-turn conversational memory and structured map routing stops.
     """
 
     def __init__(
         self,
         embedding_service: Optional[EmbeddingService] = None,
         storage_service: Optional[StorageService] = None,
+        vector_store: Optional[VectorStoreService] = None,
         api_key: Optional[str] = None
     ):
         self.embedding_service = embedding_service or EmbeddingService()
         self.storage_service = storage_service or StorageService()
+        self.vector_store = vector_store or VectorStoreService()
         self.api_key = api_key or settings.GEMINI_API_KEY
         if self.api_key and self.api_key.strip() and self.api_key != "your_gemini_api_key_here":
             genai.configure(api_key=self.api_key)
@@ -89,19 +92,29 @@ class RAGPlannerService:
             try:
                 query_embedding = self.embedding_service.generate_embedding(
                     text=effective_search_query,
-                    task_type="retrieval_query"
+                    task_type="retrieval_query",
+                    output_dimensionality=settings.EMBEDDING_DIMENSION
                 )
             except Exception as e:
                 logger.warning(f"Failed to generate query embedding: {e}")
 
-        # 2. Retrieve top-k similar items for this user
-        retrieved_results = self.storage_service.search_similar_items(
-            query_embedding=query_embedding,
-            top_k=request.max_items,
-            user_id=user_id
-        )
+        # 2. Retrieve top-k similar item IDs from ChromaDB
+        retrieved_hits = []
+        if query_embedding:
+            retrieved_hits = self.vector_store.search(
+                user_id=user_id,
+                query_embedding=query_embedding,
+                top_k=request.max_items
+            )
 
-        # If no items stored yet, return guidance
+        # Double User Isolation: Hydrate full metadata strictly from SQLite checking user ownership
+        retrieved_results: List[Tuple[SavedItem, float]] = []
+        for item_id, score in retrieved_hits:
+            item = self.storage_service.get_item_by_id(item_id, user_id=user_id)
+            if item:
+                retrieved_results.append((item, score))
+
+        # If Chroma yielded no matches, fallback to recent items for user or show guidance
         if not retrieved_results:
             all_items = self.storage_service.get_all_items(user_id=user_id)
             if not all_items:
@@ -115,6 +128,9 @@ class RAGPlannerService:
                     referenced_item_ids=[],
                     stops=[]
                 )
+            # If user has items but vector search had no close matches, take most recent
+            for itm in all_items[:request.max_items]:
+                retrieved_results.append((itm, 0.4))
 
         # 3. Format citations and context blocks
         citations: List[CitationItem] = []

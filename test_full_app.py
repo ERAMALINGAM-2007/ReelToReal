@@ -21,6 +21,7 @@ from app.models.schema import (
 from app.services.storage_service import StorageService
 from app.services.embedding_service import EmbeddingService
 from app.services.geocoding_service import GeocodingService
+from app.services.vector_store_service import VectorStoreService
 from app.services.rag_planner import RAGPlannerService
 
 def test_full_pipeline():
@@ -29,7 +30,8 @@ def test_full_pipeline():
     storage = StorageService()
     geocoder = GeocodingService()
     embedder = EmbeddingService()
-    planner = RAGPlannerService(embedder, storage)
+    vector_store = VectorStoreService()
+    planner = RAGPlannerService(embedder, storage, vector_store)
 
     # 1. Test Geocoding
     print("[1/5] Testing Geocoding Service...")
@@ -140,7 +142,22 @@ def test_full_pipeline():
             embedding=embedding,
             latitude=s["lat"],
             longitude=s["lon"],
-            geocoded_address=f"{s['entities'].place_name}, {s['entities'].city}"
+            geocoded_address=f"{s['entities'].place_name}, {s['entities'].city}",
+            vector_sync_status="synced"
+        )
+        vector_store.upsert_item(
+            item_id=s["id"],
+            user_id="default",
+            search_blob=analysis.search_blob,
+            embedding=embedding,
+            metadata={
+                "user_id": "default",
+                "title": analysis.title,
+                "category": analysis.category.value,
+                "place_name": analysis.entities.place_name,
+                "city": analysis.entities.city,
+                "created_at": "2026-09-19T00:00:00"
+            }
         )
 
     print(f"  [OK] Saved items in Knowledge Base. Total count = {storage.count_items()}")

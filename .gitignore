@@ -15,6 +15,7 @@ ENV/
 # Temporary and local data
 tmp/
 data/reeltoreal.db
+data/chroma_db/
 data/media/*
 !data/media/.gitkeep
 

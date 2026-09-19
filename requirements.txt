@@ -9,3 +9,4 @@ imageio-ffmpeg>=0.5.1
 requests>=2.31.0
 aiofiles>=24.1.0
 numpy>=1.26.0
+chromadb>=1.0,<2.0

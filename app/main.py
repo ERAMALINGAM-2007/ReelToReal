@@ -29,6 +29,7 @@ from app.services.embedding_service import EmbeddingService
 from app.services.storage_service import StorageService
 from app.services.geocoding_service import GeocodingService
 from app.services.rag_planner import RAGPlannerService
+from app.services.vector_store_service import VectorStoreService
 
 # Configure logging
 logging.basicConfig(
@@ -40,7 +41,7 @@ logger = logging.getLogger("reeltoreal")
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="ReelToReal: AI-Powered Personal Planner & Multimodal Video Understanding Engine."
+    description="ReelToReal: AI-Powered Personal Planner & Multimodal Video Understanding Engine with ChromaDB Vector Store."
 )
 
 # Enable CORS
@@ -53,20 +54,60 @@ app.add_middleware(
 )
 
 # Initialize Services
+settings.ensure_directories()
 analyzer = GeminiVideoAnalyzer()
 embedding_service = EmbeddingService()
 storage_service = StorageService()
 geocoding_service = GeocodingService()
-rag_planner = RAGPlannerService(embedding_service, storage_service)
+vector_store = VectorStoreService()
+rag_planner = RAGPlannerService(embedding_service, storage_service, vector_store)
 
 # Mount local media directory for serving saved video clips
-settings.ensure_directories()
 app.mount("/media", StaticFiles(directory=str(settings.MEDIA_DIR)), name="media")
 
 # Static frontend directory
 STATIC_DIR = BASE_DIR / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+@app.on_event("startup")
+async def startup_reconciliation():
+    """Reconciles any unsynced or failed vectors into ChromaDB on application startup."""
+    try:
+        unsynced = storage_service.get_unsynced_items()
+        if unsynced:
+            logger.info(f"Startup check: found {len(unsynced)} unsynced items. Reconciling with ChromaDB...")
+            for itm in unsynced:
+                try:
+                    emb = []
+                    if embedding_service.is_configured():
+                        emb = embedding_service.generate_embedding(
+                            itm.analysis.search_blob,
+                            task_type="retrieval_document",
+                            output_dimensionality=settings.EMBEDDING_DIMENSION
+                        )
+                    if emb:
+                        ok = vector_store.upsert_item(
+                            item_id=itm.id,
+                            user_id=itm.user_id,
+                            search_blob=itm.analysis.search_blob,
+                            embedding=emb,
+                            metadata={
+                                "user_id": itm.user_id,
+                                "title": itm.analysis.title,
+                                "category": itm.analysis.category.value,
+                                "place_name": itm.analysis.entities.place_name,
+                                "city": itm.analysis.entities.city,
+                                "created_at": itm.created_at
+                            }
+                        )
+                        if ok:
+                            storage_service.update_sync_status(itm.id, "synced")
+                            logger.info(f"Reconciled item {itm.id} to ChromaDB.")
+                except Exception as sync_err:
+                    logger.warning(f"Could not reconcile item {itm.id} during startup: {sync_err}")
+    except Exception as e:
+        logger.warning(f"Error during startup vector reconciliation: {e}")
 
 @app.get("/api/health", response_model=HealthResponse, tags=["General"])
 async def health_check():
@@ -76,6 +117,7 @@ async def health_check():
         model_configured=settings.GEMINI_MODEL,
         embedding_model_configured=settings.GEMINI_EMBEDDING_MODEL,
         total_saved_items=storage_service.count_items(),
+        chroma_indexed_items=vector_store.count(),
         temp_dir=str(settings.TEMP_VIDEO_DIR)
     )
 
@@ -92,7 +134,7 @@ async def get_saved_item(
     item_id: str,
     user_id: Optional[str] = Query(None, description="Optional user scoping")
 ):
-    """Retrieves a single saved item by ID."""
+    """Retrieves a single saved item by ID with double user isolation."""
     item = storage_service.get_item_by_id(item_id, user_id=user_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found.")
@@ -104,10 +146,16 @@ async def update_saved_item(
     payload: ItemUpdateRequest,
     user_id: Optional[str] = Query(None, description="Optional user scoping")
 ):
-    """Updates personal notes or tags for a saved item."""
+    """
+    Updates personal notes, tags, or metadata for a saved item,
+    rebuilds search_blob from scratch, re-embeds, and synchronizes ChromaDB.
+    """
+    # 1. Update SQLite and rebuild search_blob
     updated = storage_service.update_item(
         item_id=item_id,
         user_id=user_id,
+        title=payload.title,
+        category=payload.category,
         personal_notes=payload.personal_notes,
         tags=payload.tags,
         place_name=payload.place_name,
@@ -115,6 +163,39 @@ async def update_saved_item(
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Item not found.")
+
+    # 2. Re-embed at fixed 768 dimensions and synchronize ChromaDB
+    try:
+        new_emb = []
+        if embedding_service.is_configured():
+            new_emb = embedding_service.generate_embedding(
+                updated.analysis.search_blob,
+                task_type="retrieval_document",
+                output_dimensionality=settings.EMBEDDING_DIMENSION
+            )
+        if new_emb:
+            sync_ok = vector_store.update_item(
+                item_id=item_id,
+                user_id=updated.user_id,
+                search_blob=updated.analysis.search_blob,
+                embedding=new_emb,
+                metadata={
+                    "user_id": updated.user_id,
+                    "title": updated.analysis.title,
+                    "category": updated.analysis.category.value,
+                    "place_name": updated.analysis.entities.place_name,
+                    "city": updated.analysis.entities.city,
+                    "created_at": updated.created_at
+                }
+            )
+            status_val = "synced" if sync_ok else "failed"
+            storage_service.update_sync_status(item_id, status_val)
+            updated.vector_sync_status = status_val
+    except Exception as e:
+        logger.warning(f"Failed to synchronize ChromaDB vector for item {item_id}: {e}")
+        storage_service.update_sync_status(item_id, "failed")
+        updated.vector_sync_status = "failed"
+
     return updated
 
 @app.delete("/api/items/{item_id}", tags=["Knowledge Base"])
@@ -122,10 +203,17 @@ async def delete_saved_item(
     item_id: str,
     user_id: Optional[str] = Query(None, description="Optional user scoping")
 ):
-    """Deletes an item from the knowledge base."""
+    """Deletes an item from SQLite and ChromaDB."""
     success = storage_service.delete_item(item_id, user_id=user_id)
     if not success:
         raise HTTPException(status_code=404, detail="Item not found.")
+    
+    # Delete from ChromaDB
+    try:
+        vector_store.delete_item(item_id)
+    except Exception as e:
+        logger.warning(f"Could not remove {item_id} from ChromaDB: {e}")
+
     return {"success": True, "message": "Item deleted."}
 
 @app.get("/api/kb/stats", response_model=KnowledgeBaseStats, tags=["Knowledge Base"])
@@ -160,7 +248,8 @@ async def get_map_pins(user_id: Optional[str] = Query("default", description="Us
 @app.post("/api/plan", response_model=PlanQueryResponse, tags=["AI Planner"])
 async def generate_plan_endpoint(payload: PlanQueryRequest):
     """
-    RAG-grounded natural language planner: Retrieves saved clips and generates a concrete itinerary.
+    RAG-grounded natural language planner:
+    Retrieves saved clips from ChromaDB and generates a concrete itinerary grounded in evidence.
     """
     return rag_planner.generate_plan(payload)
 
@@ -172,10 +261,11 @@ async def process_video_file(
     """
     Direct file upload pipeline:
     1. Ingestion & validation.
-    2. Gemini Multimodal Analysis (Audio + Visuals + On-screen text).
+    2. Gemini Multimodal Analysis (gemini-3.8-flash).
     3. OpenStreetMap Geocoding.
-    4. Gemini Embedding generation (models/embedding-001).
+    4. Gemini Embedding generation (models/gemini-embedding-2 @ 768 dims).
     5. Persistence in SQLite Knowledge Base.
+    6. Upsert into ChromaDB vector database.
     """
     settings.ensure_directories()
     start_time = time.time()
@@ -227,17 +317,18 @@ async def process_video_file(
         except Exception as geo_err:
             logger.warning(f"Geocoding error: {geo_err}")
 
-        # 4. Embedding Generation
+        # 4. Embedding Generation (Fixed 768 Dimensions)
         embedding = []
         try:
             embedding = embedding_service.generate_embedding(
                 analysis_result.search_blob,
-                task_type="retrieval_document"
+                task_type="retrieval_document",
+                output_dimensionality=settings.EMBEDDING_DIMENSION
             )
         except Exception as emb_err:
             logger.warning(f"Embedding error: {emb_err}")
 
-        # 5. Save to Knowledge Base
+        # 5. Save to SQLite (Source of Truth)
         saved_item = storage_service.save_item(
             item_id=unique_id,
             source_type="file_upload",
@@ -249,8 +340,34 @@ async def process_video_file(
             geocoded_address=geo_addr,
             media_path=str(media_dest_path),
             media_url=media_url,
-            user_id=user_id
+            user_id=user_id,
+            vector_sync_status="pending"
         )
+
+        # 6. Upsert to ChromaDB Vector Store
+        if embedding:
+            try:
+                chroma_ok = vector_store.upsert_item(
+                    item_id=unique_id,
+                    user_id=user_id,
+                    search_blob=analysis_result.search_blob,
+                    embedding=embedding,
+                    metadata={
+                        "user_id": user_id,
+                        "title": analysis_result.title,
+                        "category": analysis_result.category.value,
+                        "place_name": analysis_result.entities.place_name,
+                        "city": analysis_result.entities.city,
+                        "created_at": saved_item.created_at
+                    }
+                )
+                sync_val = "synced" if chroma_ok else "failed"
+                storage_service.update_sync_status(unique_id, sync_val)
+                saved_item.vector_sync_status = sync_val
+            except Exception as chroma_err:
+                logger.warning(f"ChromaDB upsert error for {unique_id}: {chroma_err}")
+                storage_service.update_sync_status(unique_id, "failed")
+                saved_item.vector_sync_status = "failed"
 
         elapsed = round(time.time() - start_time, 2)
         return VideoProcessResponse(
@@ -287,13 +404,15 @@ async def process_video_url(payload: VideoProcessRequest):
     """
     URL Ingestion Pipeline:
     1. Downloads video from YouTube Shorts / Reels.
-    2. Runs Gemini multimodal intelligence.
-    3. Geocodes location.
-    4. Computes semantic embedding.
-    5. Saves to knowledge base.
+    2. Runs Gemini multimodal intelligence (gemini-3.8-flash).
+    3. Geocodes location with OpenStreetMap.
+    4. Computes semantic embedding (models/gemini-embedding-2 @ 768 dims).
+    5. Saves to SQLite.
+    6. Upserts to ChromaDB vector store.
     """
     start_time = time.time()
     url = payload.url.strip()
+    user_id = payload.user_id or "default"
 
     if not url:
         raise HTTPException(status_code=400, detail="URL cannot be empty.")
@@ -334,17 +453,18 @@ async def process_video_url(payload: VideoProcessRequest):
         except Exception as geo_err:
             logger.warning(f"Geocoding error: {geo_err}")
 
-        # 4. Embedding
+        # 4. Embedding Generation (Fixed 768 Dimensions)
         embedding = []
         try:
             embedding = embedding_service.generate_embedding(
                 analysis_result.search_blob,
-                task_type="retrieval_document"
+                task_type="retrieval_document",
+                output_dimensionality=settings.EMBEDDING_DIMENSION
             )
         except Exception as emb_err:
             logger.warning(f"Embedding error: {emb_err}")
 
-        # 5. Save to Knowledge Base
+        # 5. Save to SQLite (Source of Truth)
         saved_item = storage_service.save_item(
             item_id=unique_id,
             source_type="url",
@@ -356,8 +476,34 @@ async def process_video_url(payload: VideoProcessRequest):
             geocoded_address=geo_addr,
             media_path=str(media_dest_path),
             media_url=media_url,
-            user_id=payload.user_id or "default"
+            user_id=user_id,
+            vector_sync_status="pending"
         )
+
+        # 6. Upsert to ChromaDB Vector Store
+        if embedding:
+            try:
+                chroma_ok = vector_store.upsert_item(
+                    item_id=unique_id,
+                    user_id=user_id,
+                    search_blob=analysis_result.search_blob,
+                    embedding=embedding,
+                    metadata={
+                        "user_id": user_id,
+                        "title": analysis_result.title,
+                        "category": analysis_result.category.value,
+                        "place_name": analysis_result.entities.place_name,
+                        "city": analysis_result.entities.city,
+                        "created_at": saved_item.created_at
+                    }
+                )
+                sync_val = "synced" if chroma_ok else "failed"
+                storage_service.update_sync_status(unique_id, sync_val)
+                saved_item.vector_sync_status = sync_val
+            except Exception as chroma_err:
+                logger.warning(f"ChromaDB upsert error for {unique_id}: {chroma_err}")
+                storage_service.update_sync_status(unique_id, "failed")
+                saved_item.vector_sync_status = "failed"
 
         elapsed = round(time.time() - start_time, 2)
         return VideoProcessResponse(

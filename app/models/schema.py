@@ -105,9 +105,12 @@ class SavedItem(BaseModel):
     longitude: Optional[float] = None
     geocoded_address: Optional[str] = None
     personal_notes: Optional[str] = Field(default="", description="User's custom notes or annotations")
+    vector_sync_status: str = Field(default="synced", description="'pending' | 'synced' | 'failed'")
     created_at: str = Field(..., description="ISO 8601 timestamp")
 
 class ItemUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    category: Optional[str] = None
     personal_notes: Optional[str] = None
     tags: Optional[List[str]] = None
     place_name: Optional[str] = None
@@ -192,5 +195,6 @@ class HealthResponse(BaseModel):
     model_configured: str
     embedding_model_configured: str
     total_saved_items: int
+    chroma_indexed_items: Optional[int] = None
     temp_dir: str
 

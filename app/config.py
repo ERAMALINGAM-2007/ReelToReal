@@ -19,6 +19,8 @@ class Settings:
     TEMP_VIDEO_DIR: Path = BASE_DIR / os.getenv("TEMP_VIDEO_DIR", "tmp/videos")
     MEDIA_DIR: Path = BASE_DIR / "data/media"
     DB_PATH: Path = BASE_DIR / "data/reeltoreal.db"
+    CHROMA_DIR: Path = BASE_DIR / "data/chroma_db"
+    EMBEDDING_DIMENSION: int = 768
     
     # Limits
     MAX_UPLOAD_SIZE_MB: int = 50
@@ -29,6 +31,7 @@ class Settings:
         cls.TEMP_VIDEO_DIR.mkdir(parents=True, exist_ok=True)
         cls.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
         cls.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        cls.CHROMA_DIR.mkdir(parents=True, exist_ok=True)
 
     @classmethod
     def has_gemini_key(cls) -> bool:

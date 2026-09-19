@@ -22,12 +22,18 @@ class EmbeddingService:
     def is_configured(self) -> bool:
         return self._configured
 
-    def generate_embedding(self, text: str, task_type: str = "retrieval_document") -> List[float]:
+    def generate_embedding(
+        self,
+        text: str,
+        task_type: str = "retrieval_document",
+        output_dimensionality: Optional[int] = None
+    ) -> List[float]:
         """
         Generates an embedding vector for the provided text.
         Args:
             text: The text to embed.
             task_type: 'retrieval_document' or 'retrieval_query' or 'semantic_similarity'
+            output_dimensionality: Fixed output vector dimension (e.g. 768)
         Returns:
             List[float]: The embedding vector.
         """
@@ -36,6 +42,8 @@ class EmbeddingService:
 
         if not text or not text.strip():
             return []
+
+        target_dims = output_dimensionality or getattr(settings, "EMBEDDING_DIMENSION", 768)
 
         # Normalize model aliases (e.g. 'embedding-002', 'gemini-embedding-002' -> 'models/gemini-embedding-2')
         norm_model = self.model
@@ -60,13 +68,21 @@ class EmbeddingService:
                     result = genai.embed_content(
                         model=cand,
                         content=text,
-                        task_type=task_type
+                        task_type=task_type,
+                        output_dimensionality=target_dims
                     )
                 except Exception:
-                    result = genai.embed_content(
-                        model=cand,
-                        content=text
-                    )
+                    try:
+                        result = genai.embed_content(
+                            model=cand,
+                            content=text,
+                            task_type=task_type
+                        )
+                    except Exception:
+                        result = genai.embed_content(
+                            model=cand,
+                            content=text
+                        )
 
                 if isinstance(result, dict) and "embedding" in result:
                     return result["embedding"]
