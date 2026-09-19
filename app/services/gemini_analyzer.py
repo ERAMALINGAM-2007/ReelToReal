@@ -152,12 +152,20 @@ class GeminiVideoAnalyzer:
 
             logger.info("Video is ACTIVE and ready on Gemini. Sending exhaustive multimodal reasoning prompt...")
 
-            # Define candidate models in order of priority, with robust fallback on quota limits
-            model_candidates = [primary_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+            # Define candidate models in order of priority, using active Google Generative AI v1beta models
+            model_candidates = [
+                primary_model,
+                "gemini-3.5-flash",
+                "gemini-3.6-flash",
+                "gemini-3.7-flash",
+                "gemini-3.8-flash",
+                "gemini-2.5-flash"
+            ]
             model_candidates = list(dict.fromkeys(model_candidates))
 
             last_error = None
             response_text = None
+            encountered_quota = False
 
             for candidate in model_candidates:
                 try:
@@ -184,11 +192,19 @@ class GeminiVideoAnalyzer:
                         logger.info(f"Successfully received analysis from {candidate}")
                         break
                 except Exception as model_err:
+                    err_str = str(model_err)
+                    if "429" in err_str or "ResourceExhausted" in type(model_err).__name__:
+                        encountered_quota = True
                     logger.warning(f"Model {candidate} encountered an error: {model_err}")
                     last_error = model_err
                     continue
 
             if not response_text:
+                if encountered_quota:
+                    raise GeminiAnalysisError(
+                        f"Gemini API free tier quota limit reached (429 ResourceExhausted). "
+                        f"Please wait for your free-tier daily quota to reset or upgrade your Google AI Studio key: {last_error}"
+                    )
                 raise GeminiAnalysisError(f"Failed to generate content with available Gemini models: {last_error}")
 
             return self._parse_and_validate_json(response_text)

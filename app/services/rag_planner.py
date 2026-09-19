@@ -178,7 +178,14 @@ class RAGPlannerService:
             f"At the very end of your response, output the ```json_stops ... ``` block as required by your instructions."
         )
 
-        candidates = [settings.GEMINI_MODEL, "gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+        candidates = [
+            settings.GEMINI_MODEL,
+            "gemini-3.5-flash",
+            "gemini-3.6-flash",
+            "gemini-3.7-flash",
+            "gemini-3.8-flash",
+            "gemini-2.5-flash"
+        ]
         candidates = list(dict.fromkeys(candidates))
 
         plan_narrative = ""
