@@ -26,6 +26,10 @@ class StorageService:
     def _init_db(self):
         settings.ensure_directories()
         with sqlite3.connect(self.db_path) as conn:
+            # Enable WAL mode and busy timeout for concurrent web production performance
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA busy_timeout=10000;")
+            
             # 1. Users Profile Table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS users (

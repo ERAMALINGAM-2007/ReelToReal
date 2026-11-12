@@ -16,10 +16,11 @@ class Settings:
     GEMINI_EMBEDDING_MODEL: str = os.getenv("GEMINI_EMBEDDING_MODEL", "models/gemini-embedding-2")
     
     # Storage settings
-    TEMP_VIDEO_DIR: Path = BASE_DIR / os.getenv("TEMP_VIDEO_DIR", "tmp/videos")
-    MEDIA_DIR: Path = BASE_DIR / "data/media"
-    DB_PATH: Path = BASE_DIR / "data/reeltoreal.db"
-    CHROMA_DIR: Path = BASE_DIR / "data/chroma_db"
+    DATA_DIR: Path = Path(os.getenv("DATA_DIR", str(BASE_DIR / "data")))
+    TEMP_VIDEO_DIR: Path = Path(os.getenv("TEMP_VIDEO_DIR", str(BASE_DIR / "tmp" / "videos")))
+    MEDIA_DIR: Path = DATA_DIR / "media"
+    DB_PATH: Path = DATA_DIR / "reeltoreal.db"
+    CHROMA_DIR: Path = DATA_DIR / "chroma_db"
     EMBEDDING_DIMENSION: int = 768
     
     # Limits
